@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { Search, Disc3, Mic2, Activity, ArrowLeft } from 'lucide-react';
+import { Search, Disc3, Mic2, ArrowLeft } from 'lucide-react';
 import ErrorState from './ErrorState';
 import AlbumView from './AlbumView';
 
@@ -133,7 +133,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen p-8 md:p-16 max-w-5xl mx-auto font-sans">
+      <div className="min-h-screen p-8 md:p-16 max-w-5xl mx-auto font-sans flex flex-col">
         <header className="mb-12">
           <h1 className="text-4xl font-extrabold tracking-tighter mb-4">
             <button
@@ -179,7 +179,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => window.history.back()}
-            className="mb-8 flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-neutral-500"
+            className="self-start mb-8 flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-neutral-500"
           >
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
@@ -270,6 +270,18 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
+
+        <footer className="mt-auto pt-24 text-sm text-neutral-600">
+          Site by{' '}
+          <a
+            href="https://vuyisanani.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-neutral-400 underline underline-offset-4 decoration-neutral-700 hover:text-neutral-50 hover:decoration-neutral-400 transition-colors focus-visible:outline-2 focus-visible:outline-neutral-500"
+          >
+            Vuyisanani
+          </a>
+        </footer>
       </div>
     </MotionConfig>
   );
