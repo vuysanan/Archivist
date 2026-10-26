@@ -35,16 +35,16 @@ namespace Archivist.Api.Services
             var cleanTitle = CleanTitle(title);
             var search = await GetAsync($"search?q={Uri.EscapeDataString($"{cleanTitle} {artist}")}");
 
-            var wantTitle = Normalize(StripBrackets(cleanTitle));
-            var wantArtist = Normalize(artist);
+            var wantTitle = TextUtil.Normalize(TextUtil.StripBrackets(cleanTitle));
+            var wantArtist = TextUtil.Normalize(artist);
 
             foreach (var hit in search["hits"]?.AsArray() ?? new JsonArray())
             {
                 var result = hit?["result"];
                 if (result is null) continue;
 
-                var hitTitle = Normalize(StripBrackets(result["title"]?.GetValue<string>() ?? ""));
-                var hitArtists = Normalize(result["artist_names"]?.GetValue<string>()
+                var hitTitle = TextUtil.Normalize(TextUtil.StripBrackets(result["title"]?.GetValue<string>() ?? ""));
+                var hitArtists = TextUtil.Normalize(result["artist_names"]?.GetValue<string>()
                                            ?? result["primary_artist"]?["name"]?.GetValue<string>() ?? "");
 
                 var titleOk = hitTitle == wantTitle || hitTitle.StartsWith(wantTitle + " ");
@@ -68,21 +68,5 @@ namespace Archivist.Api.Services
             RegexOptions.IgnoreCase);
 
         private static string CleanTitle(string title) => Noise.Replace(title, "").Trim();
-
-        private static string StripBrackets(string s) => Regex.Replace(s, @"\s*[\(\[].*?[\)\]]", "");
-
-        // Lowercase, no accents or punctuation, so "The Notorious B.I.G." equals "the notorious big".
-        private static string Normalize(string s)
-        {
-            var sb = new StringBuilder();
-            foreach (var c in s.Normalize(NormalizationForm.FormD))
-            {
-                if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark) continue;
-                if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
-                else if (c == '&') sb.Append(" and ");
-                else if (char.IsWhiteSpace(c)) sb.Append(' ');
-            }
-            return Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
-        }
     }
 }

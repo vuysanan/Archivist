@@ -29,18 +29,47 @@ namespace Archivist.Api.Services
         // Searches, picks the best match, then loads its full record. Returns null if nothing matches.
         private async Task<JsonNode?> FindAsync(string query, string type)
         {
-            // For tracks, look at the top 5 results and keep the most popular one (Deezer's "rank").
-            // That is usually the original release rather than a remaster, cover or karaoke version.
-            var limit = type == "track" ? 5 : 1;
+            var limit = type == "track" ? 10 : 1;
             var search = await GetAsync($"search/{type}?q={Uri.EscapeDataString(query)}&limit={limit}");
+            var results = search["data"]?.AsArray() ?? new JsonArray();
 
-            var best = (search["data"]?.AsArray() ?? new JsonArray())
-                .Where(r => r is not null)
-                .OrderByDescending(r => r!["rank"]?.GetValue<long>() ?? 0)
-                .FirstOrDefault();
-
+            var best = type == "track" ? PickBestTrack(results, query) : results.FirstOrDefault();
             var id = best?["id"]?.GetValue<long>();
             return id is null ? null : await GetAsync($"{type}/{id}");
+        }
+
+        // Among results that really contain every word you typed (in the title or artist name),
+        // prefer an exact title match, then the most popular one (Deezer's "rank").
+        // This avoids picking a hit song that only mentions your search in a "feat." credit.
+        // If nothing matches, fall back to Deezer's own top result.
+        private static JsonNode? PickBestTrack(JsonArray results, string query)
+        {
+            var want = TextUtil.Normalize(query);
+            var wantWords = want.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            var scored = results
+                .Where(r => r is not null)
+                .Select(r =>
+                {
+                    var title = TextUtil.Normalize(TextUtil.StripBrackets(r!["title"]?.GetValue<string>() ?? ""));
+                    var artist = TextUtil.Normalize(r["artist"]?["name"]?.GetValue<string>() ?? "");
+                    var words = $"{artist} {title}".Split(' ');
+                    return new
+                    {
+                        Item = r,
+                        Exact = title == want,
+                        Matches = wantWords.All(w => words.Contains(w)),
+                        Rank = r["rank"]?.GetValue<long>() ?? 0
+                    };
+                })
+                .ToList();
+
+            return scored.Where(x => x.Matches)
+                         .OrderByDescending(x => x.Exact)
+                         .ThenByDescending(x => x.Rank)
+                         .Select(x => x.Item)
+                         .FirstOrDefault()
+                   ?? scored.FirstOrDefault()?.Item;
         }
 
         public Task<JsonNode?> GetTrackAsync(string query) => FindAsync(query, "track");
