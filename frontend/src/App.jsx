@@ -5,7 +5,12 @@ import ErrorState from './ErrorState';
 import AlbumView from './AlbumView';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'https://localhost:7266';
-const EXAMPLES = ['DNA.', 'Juicy', 'Nice For What'];
+const EXAMPLES = [
+  { label: 'DNA.', query: 'DNA.' },
+  { label: 'Shela', query: 'Shela Sam Deep' },
+  { label: 'Nice For What', query: 'Nice For What' },
+  { label: 'No Role Modelz', query: 'No Role Modelz J. Cole' },
+];
 
 const staggerContainer = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } };
 const fadeUp = {
@@ -92,7 +97,7 @@ export default function App() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search an American rap ${mode}...`}
+              placeholder={`Search ${mode}...`}
               aria-label={`Search a ${mode}`}
               className="w-full bg-surface border border-neutral-800 rounded-full py-4 pl-12 pr-6 text-sm focus:outline-none focus:border-neutral-500 transition-colors"
             />
@@ -195,9 +200,9 @@ export default function App() {
                 <p className="text-neutral-400 mb-4">Search a track to see who produced it, who wrote it, and what it samples.</p>
                 <div className="flex flex-wrap gap-2">
                   {EXAMPLES.map((ex) => (
-                    <button key={ex} type="button" onClick={() => openTrack(ex)}
+                    <button key={ex.label} type="button" onClick={() => openTrack(ex.query)}
                       className="text-sm bg-surface border border-neutral-800 hover:border-neutral-500 rounded-full px-4 py-2 transition-colors focus-visible:outline-2 focus-visible:outline-neutral-500">
-                      {ex}
+                      {ex.label}
                     </button>
                   ))}
                 </div>
