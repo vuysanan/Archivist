@@ -1,5 +1,8 @@
-﻿using System.Net.Http.Headers;
+﻿using System.Globalization;
+using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace Archivist.Api.Services
 {
@@ -25,15 +28,61 @@ namespace Archivist.Api.Services
             return JsonNode.Parse(await res.Content.ReadAsStringAsync())!["response"]!;
         }
 
-        // Finds the best match for "title artist", then loads the full song record.
+        // Looks through the top search results for one whose title AND artist really match.
+        // Returns null when nothing matches, so we show "Not listed" instead of someone else's credits.
         public async Task<JsonNode?> FindSongAsync(string title, string artist)
         {
-            var search = await GetAsync($"search?q={Uri.EscapeDataString($"{title} {artist}")}");
-            var id = search["hits"]?.AsArray().FirstOrDefault()?["result"]?["id"]?.GetValue<int>();
-            if (id is null) return null;
+            var cleanTitle = CleanTitle(title);
+            var search = await GetAsync($"search?q={Uri.EscapeDataString($"{cleanTitle} {artist}")}");
 
-            var song = await GetAsync($"songs/{id}");
-            return song["song"];
+            var wantTitle = Normalize(StripBrackets(cleanTitle));
+            var wantArtist = Normalize(artist);
+
+            foreach (var hit in search["hits"]?.AsArray() ?? new JsonArray())
+            {
+                var result = hit?["result"];
+                if (result is null) continue;
+
+                var hitTitle = Normalize(StripBrackets(result["title"]?.GetValue<string>() ?? ""));
+                var hitArtists = Normalize(result["artist_names"]?.GetValue<string>()
+                                           ?? result["primary_artist"]?["name"]?.GetValue<string>() ?? "");
+
+                var titleOk = hitTitle == wantTitle || hitTitle.StartsWith(wantTitle + " ");
+                var artistOk = hitArtists.Contains(wantArtist);
+                if (!titleOk || !artistOk) continue;
+
+                var id = result["id"]?.GetValue<int>();
+                if (id is null) continue;
+
+                var song = await GetAsync($"songs/{id}");
+                return song["song"];
+            }
+
+            return null;
+        }
+
+        // "Juicy (2005 Remaster)" -> "Juicy", "Song - Radio Edit" -> "Song"
+        private static readonly Regex Noise = new(
+            @"\s*[\(\[][^\)\]]*(remaster|version|edit|mix|mono|stereo|live|deluxe|explicit|radio|feat|ft\.)[^\)\]]*[\)\]]" +
+            @"|\s+-\s+.*(remaster|version|edit|mix|mono|stereo|live|radio).*$",
+            RegexOptions.IgnoreCase);
+
+        private static string CleanTitle(string title) => Noise.Replace(title, "").Trim();
+
+        private static string StripBrackets(string s) => Regex.Replace(s, @"\s*[\(\[].*?[\)\]]", "");
+
+        // Lowercase, no accents or punctuation, so "The Notorious B.I.G." equals "the notorious big".
+        private static string Normalize(string s)
+        {
+            var sb = new StringBuilder();
+            foreach (var c in s.Normalize(NormalizationForm.FormD))
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark) continue;
+                if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+                else if (c == '&') sb.Append(" and ");
+                else if (char.IsWhiteSpace(c)) sb.Append(' ');
+            }
+            return Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
         }
     }
 }

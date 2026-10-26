@@ -26,11 +26,20 @@ namespace Archivist.Api.Services
             return json;
         }
 
-        // Searches, takes the top match, then loads its full record. Returns null if nothing matches.
+        // Searches, picks the best match, then loads its full record. Returns null if nothing matches.
         private async Task<JsonNode?> FindAsync(string query, string type)
         {
-            var search = await GetAsync($"search/{type}?q={Uri.EscapeDataString(query)}&limit=1");
-            var id = search["data"]?.AsArray().FirstOrDefault()?["id"]?.GetValue<long>();
+            // For tracks, look at the top 5 results and keep the most popular one (Deezer's "rank").
+            // That is usually the original release rather than a remaster, cover or karaoke version.
+            var limit = type == "track" ? 5 : 1;
+            var search = await GetAsync($"search/{type}?q={Uri.EscapeDataString(query)}&limit={limit}");
+
+            var best = (search["data"]?.AsArray() ?? new JsonArray())
+                .Where(r => r is not null)
+                .OrderByDescending(r => r!["rank"]?.GetValue<long>() ?? 0)
+                .FirstOrDefault();
+
+            var id = best?["id"]?.GetValue<long>();
             return id is null ? null : await GetAsync($"{type}/{id}");
         }
 

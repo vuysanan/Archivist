@@ -50,6 +50,7 @@ export default function App() {
         signal: controller.signal,
       });
       if (res.status === 404 || res.status === 400) throw { kind: 'notfound' };
+      if (res.status === 429) throw { kind: 'busy' };
       if (!res.ok) throw { kind: 'server' };
       setData(await res.json());
     } catch (err) {
@@ -91,7 +92,7 @@ export default function App() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${mode}...`}
+              placeholder={`Search an American rap ${mode}...`}
               aria-label={`Search a ${mode}`}
               className="w-full bg-surface border border-neutral-800 rounded-full py-4 pl-12 pr-6 text-sm focus:outline-none focus:border-neutral-500 transition-colors"
             />

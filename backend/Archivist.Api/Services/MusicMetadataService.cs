@@ -1,4 +1,5 @@
 ﻿using System.Text.Json.Nodes;
+using Microsoft.Extensions.Caching.Memory;
 using Archivist.Api.Models;
 
 namespace Archivist.Api.Services
@@ -7,20 +8,42 @@ namespace Archivist.Api.Services
     {
         private readonly DeezerClient _deezer;
         private readonly GeniusClient _genius;
+        private readonly IMemoryCache _cache;
         private readonly ILogger<MusicMetadataService> _logger;
 
-        public MusicMetadataService(DeezerClient deezer, GeniusClient genius, ILogger<MusicMetadataService> logger)
+        public MusicMetadataService(DeezerClient deezer, GeniusClient genius, IMemoryCache cache, ILogger<MusicMetadataService> logger)
         {
             _deezer = deezer;
             _genius = genius;
+            _cache = cache;
             _logger = logger;
         }
 
-        public async Task<TrackDetails?> GetTrackMetadataAsync(string query)
+        // Results are remembered for 12 hours, so repeat searches cost nothing and don't use up API limits.
+        private static string Key(string kind, string query) => $"{kind}:{query.Trim().ToLowerInvariant()}";
+
+        public Task<TrackDetails?> GetTrackMetadataAsync(string query) =>
+            _cache.GetOrCreateAsync(Key("track", query), async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
+                var (track, geniusFailed) = await LoadTrackAsync(query);
+                // If Genius had a hiccup, only remember the result briefly so credits can fill in soon.
+                if (geniusFailed) entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1);
+                return track;
+            });
+
+        public Task<AlbumDetails?> GetAlbumMetadataAsync(string query) =>
+            _cache.GetOrCreateAsync(Key("album", query), async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
+                return await LoadAlbumAsync(query);
+            });
+
+        private async Task<(TrackDetails? Track, bool GeniusFailed)> LoadTrackAsync(string query)
         {
             // 1. Deezer gives the basics: title, artist, cover art, year, BPM (when it has one).
             var item = await _deezer.GetTrackAsync(query);
-            if (item is null) return null;
+            if (item is null) return (null, false);
 
             var title = item["title"]?.GetValue<string>() ?? query;
             var artist = item["artist"]?["name"]?.GetValue<string>() ?? "";
@@ -38,6 +61,7 @@ namespace Archivist.Api.Services
             };
 
             // 2. Genius adds credits and samples. If it fails, still show the Deezer basics.
+            var geniusFailed = false;
             try
             {
                 var song = await _genius.FindSongAsync(title, artist);
@@ -45,13 +69,14 @@ namespace Archivist.Api.Services
             }
             catch (Exception ex)
             {
+                geniusFailed = true;
                 _logger.LogWarning(ex, "Genius lookup failed for {Query}", query);
             }
 
-            return track;
+            return (track, geniusFailed);
         }
 
-        public async Task<AlbumDetails?> GetAlbumMetadataAsync(string query)
+        private async Task<AlbumDetails?> LoadAlbumAsync(string query)
         {
             var album = await _deezer.GetAlbumAsync(query);
             if (album is null) return null;

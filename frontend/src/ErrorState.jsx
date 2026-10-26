@@ -13,11 +13,17 @@ const VARIANTS = {
     title: () => 'The archive hit a problem.',
     hint: 'That one’s on us. Try again in a moment.',
   },
+  busy: {
+    code: '429',
+    label: 'Too fast',
+    title: () => 'Slow down a little.',
+    hint: 'Wait a few seconds, then search again.',
+  },
   network: {
     code: 'OFF',
     label: 'No signal',
     title: () => 'Can’t reach the archive.',
-    hint: 'Make sure the API is running, then try again.',
+    hint: 'Check your connection, then try again.',
   },
 };
 
