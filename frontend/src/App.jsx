@@ -208,11 +208,6 @@ export default function App() {
                       <div>
                         <h2 className="text-3xl font-bold tracking-tight">{data.title}</h2>
                         <p className="text-xl text-neutral-400">{data.artist}{data.year ? ` • ${data.year}` : ''}</p>
-                        {data.bpm > 0 && (
-                          <div className="flex items-center gap-2 mt-2 text-neutral-500 font-mono text-xs">
-                            <Activity className="w-4 h-4" /> {data.bpm} BPM
-                          </div>
-                        )}
                       </div>
                     </motion.div>
 
