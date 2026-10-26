@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { Search, Disc3, Mic2, Activity } from 'lucide-react';
+import { Search, Disc3, Mic2, Activity, ArrowLeft } from 'lucide-react';
 import ErrorState from './ErrorState';
 import AlbumView from './AlbumView';
 
@@ -38,8 +38,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null); // { kind, term, mode }
   const requestRef = useRef(null);
+  const [navIndex, setNavIndex] = useState(0); // how many pages deep we are in this visit
 
-  const runSearch = async (term, searchMode = mode) => {
+  const load = async (term, searchMode = mode) => {
     const q = term.trim();
     if (!q) return;
 
@@ -67,31 +68,85 @@ export default function App() {
     }
   };
 
+  const resetToHome = () => {
+    requestRef.current?.abort();
+    setLoading(false);
+    setData(null);
+    setError(null);
+    setQuery('');
+  };
+
+  // Opens a new "page" in the browser history, then loads it.
+  const go = (term, searchMode = mode) => {
+    if (!term.trim()) return;
+    const idx = navIndex + 1;
+    window.history.pushState({ term, mode: searchMode, idx }, '');
+    setNavIndex(idx);
+    load(term, searchMode);
+  };
+
   const openTrack = (term) => {
     setMode('track');
     setQuery(term);
-    runSearch(term, 'track');
+    go(term, 'track');
   };
 
   const changeMode = (next) => {
     setMode(next);
-    if (query.trim()) runSearch(query, next);
+    if (query.trim()) go(query, next);
   };
+
+  const goHome = () => {
+    if (!data && !error && !loading) {
+      setQuery('');
+      return;
+    }
+    const idx = navIndex + 1;
+    window.history.pushState({ home: true, idx }, '');
+    setNavIndex(idx);
+    resetToHome();
+  };
+
+  // The in-app Back button and the browser's Back/Forward buttons share one history.
+  useEffect(() => {
+    window.history.replaceState({ home: true, idx: 0 }, '');
+    const onPop = (e) => {
+      const s = e.state;
+      setNavIndex(s?.idx ?? 0);
+      if (!s || s.home) {
+        resetToHome();
+        return;
+      }
+      setMode(s.mode);
+      setQuery(s.term);
+      load(s.term, s.mode);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const credits = data?.credits;
   const coProducers = credits?.coProducers ?? [];
   const writers = credits?.writers ?? [];
   const samples = data?.samples ?? [];
+  const hasView = loading || error || data;
 
   return (
     <MotionConfig reducedMotion="user">
       <div className="min-h-screen p-8 md:p-16 max-w-5xl mx-auto font-sans">
         <header className="mb-12">
           <h1 className="text-4xl font-extrabold tracking-tighter mb-4">
-            ARCHIVIST<span className="text-neutral-500">.</span>
+            <button
+              type="button"
+              onClick={goHome}
+              aria-label="Archivist home"
+              className="cursor-pointer focus-visible:outline-2 focus-visible:outline-neutral-500"
+            >
+              ARCHIVIST<span className="text-neutral-500">.</span>
+            </button>
           </h1>
 
-          <form onSubmit={(e) => { e.preventDefault(); runSearch(query); }} className="relative max-w-xl" role="search">
+          <form onSubmit={(e) => { e.preventDefault(); go(query); }} className="relative max-w-xl" role="search">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 w-5 h-5" aria-hidden="true" />
             <input
               type="text"
@@ -120,6 +175,16 @@ export default function App() {
           </div>
         </header>
 
+        {navIndex > 0 && hasView && (
+          <button
+            type="button"
+            onClick={() => window.history.back()}
+            className="mb-8 flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-200 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-neutral-500"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </button>
+        )}
+
         <div aria-live="polite">
           <AnimatePresence mode="wait">
             {loading ? (
@@ -129,7 +194,7 @@ export default function App() {
               </motion.div>
             ) : error ? (
               <ErrorState key="error" kind={error.kind} term={error.term}
-                onRetry={() => runSearch(error.term, error.mode)} />
+                onRetry={() => load(error.term, error.mode)} />
             ) : data ? (
               <motion.main key={data.id ?? data.title} variants={staggerContainer} initial="hidden" animate="show"
                 className="grid grid-cols-1 md:grid-cols-3 gap-12">
