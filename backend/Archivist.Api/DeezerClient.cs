@@ -7,6 +7,7 @@ namespace Archivist.Api.Services
     public class DeezerClient
     {
         private readonly HttpClient _http;
+        private readonly ILogger<DeezerClient> _logger;
 
         // Karaoke and tribute uploads copy real song names, so we steer away from them.
         private static readonly string[] JunkPhrases =
@@ -15,9 +16,10 @@ namespace Archivist.Api.Services
             "made famous", "in the style of", "backing track"
         };
 
-        public DeezerClient(HttpClient http)
+        public DeezerClient(HttpClient http, ILogger<DeezerClient> logger)
         {
             _http = http;
+            _logger = logger;
         }
 
         private async Task<JsonNode> GetAsync(string path)
@@ -36,8 +38,13 @@ namespace Archivist.Api.Services
         // Searches, picks the best match, then loads its full record. Returns null if nothing matches.
         private async Task<JsonNode?> FindAsync(string query, string type)
         {
-            var search = await GetAsync($"search/{type}?q={Uri.EscapeDataString(query)}&limit=25");
+            var search = await GetAsync($"search/{type}?q={Uri.EscapeDataString(query)}&limit=100");
             var results = search["data"]?.AsArray() ?? new JsonArray();
+
+            // Shows up in the Render logs, so we can see exactly what Deezer sent back.
+            _logger.LogInformation("Deezer {Type} search '{Query}' returned {Count} results. Top: {Top}",
+                type, query, results.Count,
+                string.Join(" | ", results.Take(8).Select(r => $"{r?["title"]} - {r?["artist"]?["name"]}")));
 
             var best = PickBest(results, query);
             var id = best?["id"]?.GetValue<long>();
