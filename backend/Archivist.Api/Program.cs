@@ -55,3 +55,6 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Lets the test project start the API in memory.
+public partial class Program { }

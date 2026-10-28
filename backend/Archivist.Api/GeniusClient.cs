@@ -67,6 +67,6 @@ namespace Archivist.Api.Services
             @"|\s+-\s+.*(remaster|version|edit|mix|mono|stereo|live|radio).*$",
             RegexOptions.IgnoreCase);
 
-        private static string CleanTitle(string title) => Noise.Replace(title, "").Trim();
+        public static string CleanTitle(string title) => Noise.Replace(title, "").Trim();
     }
 }

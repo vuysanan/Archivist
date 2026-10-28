@@ -50,7 +50,7 @@ namespace Archivist.Api.Services
         //  3. Results whose artist name appears in your search come first.
         //  4. Then an exact title match, then the most popular (Deezer's "rank", tracks only).
         // If nothing contains every word, fall back to Deezer's own top non-karaoke result.
-        private static JsonNode? PickBest(JsonArray results, string query)
+        public static JsonNode? PickBest(JsonArray results, string query)
         {
             var want = TextUtil.Normalize(query);
             var wantWords = want.Split(' ', StringSplitOptions.RemoveEmptyEntries);
