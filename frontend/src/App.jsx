@@ -6,10 +6,10 @@ import AlbumView from './AlbumView';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'https://localhost:7266';
 const EXAMPLES = [
-  { label: 'N.Y State of Mind', query: 'N.Y State of Mind' },
+  { label: 'N.Y State of Mind', query: 'N.Y State of Mind Nas' },
   { label: 'SOS', query: 'SOS SZA' },
   { label: 'Shela', query: 'Shela Sam Deep' },
-  { label: 'Nice For What', query: 'Nice For What' },
+  { label: 'Nice For What', query: 'Nice For What Drake' },
   { label: 'No Role Modelz', query: 'No Role Modelz J. Cole' },
 ];
 
