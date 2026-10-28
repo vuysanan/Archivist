@@ -8,6 +8,13 @@ namespace Archivist.Api.Services
     {
         private readonly HttpClient _http;
 
+        // Karaoke and tribute uploads copy real song names, so we steer away from them.
+        private static readonly string[] JunkPhrases =
+        {
+            "karaoke", "tribute", "instrumental", "originally performed",
+            "made famous", "in the style of", "backing track"
+        };
+
         public DeezerClient(HttpClient http)
         {
             _http = http;
@@ -29,20 +36,21 @@ namespace Archivist.Api.Services
         // Searches, picks the best match, then loads its full record. Returns null if nothing matches.
         private async Task<JsonNode?> FindAsync(string query, string type)
         {
-            var limit = type == "track" ? 10 : 1;
-            var search = await GetAsync($"search/{type}?q={Uri.EscapeDataString(query)}&limit={limit}");
+            var search = await GetAsync($"search/{type}?q={Uri.EscapeDataString(query)}&limit=25");
             var results = search["data"]?.AsArray() ?? new JsonArray();
 
-            var best = type == "track" ? PickBestTrack(results, query) : results.FirstOrDefault();
+            var best = PickBest(results, query);
             var id = best?["id"]?.GetValue<long>();
             return id is null ? null : await GetAsync($"{type}/{id}");
         }
 
-        // Among results that really contain every word you typed (in the title or artist name),
-        // prefer an exact title match, then the most popular one (Deezer's "rank").
-        // This avoids picking a hit song that only mentions your search in a "feat." credit.
-        // If nothing matches, fall back to Deezer's own top result.
-        private static JsonNode? PickBestTrack(JsonArray results, string query)
+        // Chooses the result that best fits what was typed:
+        //  1. It must contain every word you typed (in the title or artist name).
+        //  2. Karaoke / tribute / instrumental uploads come last.
+        //  3. Results whose artist name appears in your search come first.
+        //  4. Then an exact title match, then the most popular (Deezer's "rank", tracks only).
+        // If nothing contains every word, fall back to Deezer's own top non-karaoke result.
+        private static JsonNode? PickBest(JsonArray results, string query)
         {
             var want = TextUtil.Normalize(query);
             var wantWords = want.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -51,25 +59,34 @@ namespace Archivist.Api.Services
                 .Where(r => r is not null)
                 .Select(r =>
                 {
-                    var title = TextUtil.Normalize(TextUtil.StripBrackets(r!["title"]?.GetValue<string>() ?? ""));
+                    var rawTitle = r!["title"]?.GetValue<string>() ?? "";
+                    var title = TextUtil.Normalize(TextUtil.StripBrackets(rawTitle));
                     var artist = TextUtil.Normalize(r["artist"]?["name"]?.GetValue<string>() ?? "");
+                    var everything = TextUtil.Normalize($"{rawTitle} {r["album"]?["title"]?.GetValue<string>()}");
                     var words = $"{artist} {title}".Split(' ');
+
                     return new
                     {
                         Item = r,
-                        Exact = title == want,
                         Matches = wantWords.All(w => words.Contains(w)),
+                        Junk = JunkPhrases.Any(j => everything.Contains(j) && !want.Contains(j)),
+                        ArtistTyped = artist.Length > 0 && $" {want} ".Contains($" {artist} "),
+                        Exact = want == title || want == $"{artist} {title}" || want == $"{title} {artist}",
                         Rank = r["rank"]?.GetValue<long>() ?? 0
                     };
                 })
                 .ToList();
 
+            if (!scored.Any(x => x.Matches))
+                return (scored.FirstOrDefault(x => !x.Junk) ?? scored.FirstOrDefault())?.Item;
+
             return scored.Where(x => x.Matches)
-                         .OrderByDescending(x => x.Exact)
+                         .OrderBy(x => x.Junk)
+                         .ThenByDescending(x => x.ArtistTyped)
+                         .ThenByDescending(x => x.Exact)
                          .ThenByDescending(x => x.Rank)
                          .Select(x => x.Item)
-                         .FirstOrDefault()
-                   ?? scored.FirstOrDefault()?.Item;
+                         .First();
         }
 
         public Task<JsonNode?> GetTrackAsync(string query) => FindAsync(query, "track");

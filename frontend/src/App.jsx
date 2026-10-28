@@ -190,7 +190,7 @@ export default function App() {
             {loading ? (
               <motion.div key="loader" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex gap-2 items-center text-neutral-500 font-mono text-sm">
-                <Disc3 className="animate-spin w-4 h-4" /> Aggregating metadata...
+                <Disc3 className="animate-spin w-4 h-4" /> Digging the crates...
               </motion.div>
             ) : error ? (
               <ErrorState key="error" kind={error.kind} term={error.term}
