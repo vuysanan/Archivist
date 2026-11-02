@@ -27,5 +27,6 @@
         public string Artist { get; set; }
         public string Year { get; set; }
         public string Type { get; set; } // e.g., "Direct Sample", "Interpolation", "Vocal Extraction"
+        public bool CommunityVerified { get; set; }
     }
 }

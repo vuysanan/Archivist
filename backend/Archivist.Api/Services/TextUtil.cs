@@ -10,6 +10,10 @@ namespace Archivist.Api.Services
         // "Song (feat. Someone)" -> "Song"
         public static string StripBrackets(string s) => Regex.Replace(s, @"\s*[\(\[].*?[\)\]]", "");
 
+        // A comparable ID for a song: "The Notorious B.I.G." + "Juicy (2005 Remaster)" -> "the notorious big|juicy"
+        public static string Key(string artist, string title) =>
+            $"{Normalize(artist)}|{Normalize(StripBrackets(title))}";
+
         // Lowercase, no accents or punctuation, so "The Notorious B.I.G." equals "the notorious big".
         public static string Normalize(string s)
         {

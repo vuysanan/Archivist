@@ -7,5 +7,6 @@ namespace Archivist.Api.Services
         // Return null when nothing matches, so the controller can answer 404.
         Task<TrackDetails?> GetTrackMetadataAsync(string query);
         Task<AlbumDetails?> GetAlbumMetadataAsync(string query);
+        Task<string?> GetPreviewUrlAsync(string title, string artist);
     }
 }

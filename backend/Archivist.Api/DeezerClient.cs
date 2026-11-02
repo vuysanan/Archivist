@@ -57,7 +57,7 @@ namespace Archivist.Api.Services
         //  3. Results whose artist name appears in your search come first.
         //  4. Then an exact title match, then the most popular (Deezer's "rank", tracks only).
         // If nothing contains every word, fall back to Deezer's own top non-karaoke result.
-        public static JsonNode? PickBest(JsonArray results, string query)
+        public static JsonNode? PickBest(JsonArray results, string query, bool requireMatch = false)
         {
             var want = TextUtil.Normalize(query);
             var wantWords = want.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -85,7 +85,10 @@ namespace Archivist.Api.Services
                 .ToList();
 
             if (!scored.Any(x => x.Matches))
+            {
+                if (requireMatch) return null;
                 return (scored.FirstOrDefault(x => !x.Junk) ?? scored.FirstOrDefault())?.Item;
+            }
 
             return scored.Where(x => x.Matches)
                          .OrderBy(x => x.Junk)
@@ -94,6 +97,16 @@ namespace Archivist.Api.Services
                          .ThenByDescending(x => x.Rank)
                          .Select(x => x.Item)
                          .First();
+        }
+
+        // Finds a 30-second preview clip for a song. Returns null if there isn't a clear match.
+        // Preview links expire after a while, so these are fetched fresh when someone presses play.
+        public async Task<string?> GetPreviewAsync(string query)
+        {
+            var search = await GetAsync($"search/track?q={Uri.EscapeDataString(query)}&limit=25");
+            var best = PickBest(search["data"]?.AsArray() ?? new JsonArray(), query, requireMatch: true);
+            var url = best?["preview"]?.GetValue<string>();
+            return string.IsNullOrWhiteSpace(url) ? null : url;
         }
 
         public Task<JsonNode?> GetTrackAsync(string query) => FindAsync(query, "track");

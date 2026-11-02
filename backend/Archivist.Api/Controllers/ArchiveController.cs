@@ -34,5 +34,16 @@ namespace Archivist.Api.Controllers
             var result = await _metadataService.GetAlbumMetadataAsync(q);
             return result is null ? NotFound() : Ok(result);
         }
+
+        // A fresh 30-second preview link for the play button on the Sample Tree.
+        [HttpGet("preview")]
+        public async Task<IActionResult> Preview([FromQuery] string title, [FromQuery] string? artist = null)
+        {
+            if (string.IsNullOrWhiteSpace(title))
+                return BadRequest("Title cannot be empty.");
+
+            var url = await _metadataService.GetPreviewUrlAsync(title, artist ?? "");
+            return url is null ? NotFound() : Ok(new { url });
+        }
     }
 }

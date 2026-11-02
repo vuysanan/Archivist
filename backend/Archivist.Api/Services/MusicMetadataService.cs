@@ -8,13 +8,16 @@ namespace Archivist.Api.Services
     {
         private readonly DeezerClient _deezer;
         private readonly GeniusClient _genius;
+        private readonly ISuggestionStore _suggestions;
         private readonly IMemoryCache _cache;
         private readonly ILogger<MusicMetadataService> _logger;
 
-        public MusicMetadataService(DeezerClient deezer, GeniusClient genius, IMemoryCache cache, ILogger<MusicMetadataService> logger)
+        public MusicMetadataService(DeezerClient deezer, GeniusClient genius, ISuggestionStore suggestions,
+                                    IMemoryCache cache, ILogger<MusicMetadataService> logger)
         {
             _deezer = deezer;
             _genius = genius;
+            _suggestions = suggestions;
             _cache = cache;
             _logger = logger;
         }
@@ -22,15 +25,20 @@ namespace Archivist.Api.Services
         // Results are remembered for 12 hours, so repeat searches cost nothing and don't use up API limits.
         private static string Key(string kind, string query) => $"{kind}:{query.Trim().ToLowerInvariant()}";
 
-        public Task<TrackDetails?> GetTrackMetadataAsync(string query) =>
-            _cache.GetOrCreateAsync(Key("track", query), async entry =>
+        public async Task<TrackDetails?> GetTrackMetadataAsync(string query)
+        {
+            var track = await _cache.GetOrCreateAsync(Key("track", query), async entry =>
             {
                 entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
-                var (track, geniusFailed) = await LoadTrackAsync(query);
+                var (loaded, geniusFailed) = await LoadTrackAsync(query);
                 // If Genius had a hiccup, only remember the result briefly so credits can fill in soon.
                 if (geniusFailed) entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1);
-                return track;
+                return loaded;
             });
+
+            // Community samples are added on every request (not cached), so approvals show up right away.
+            return track is null ? null : await WithCommunitySamplesAsync(track);
+        }
 
         public Task<AlbumDetails?> GetAlbumMetadataAsync(string query) =>
             _cache.GetOrCreateAsync(Key("album", query), async entry =>
@@ -38,6 +46,30 @@ namespace Archivist.Api.Services
                 entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(12);
                 return await LoadAlbumAsync(query);
             });
+
+        public Task<string?> GetPreviewUrlAsync(string title, string artist)
+        {
+            var query = $"{TextUtil.StripBrackets(artist)} {TextUtil.StripBrackets(title)}".Trim();
+            return _cache.GetOrCreateAsync(Key("preview", query), async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5); // preview links expire
+                return await _deezer.GetPreviewAsync(query);
+            });
+        }
+
+        private async Task<TrackDetails> WithCommunitySamplesAsync(TrackDetails track)
+        {
+            try
+            {
+                var approved = await _suggestions.GetApprovedAsync(TextUtil.Key(track.Artist, track.Title));
+                return CommunitySamples.Merge(track, approved);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not load community samples for {Title}", track.Title);
+                return track;
+            }
+        }
 
         private async Task<(TrackDetails? Track, bool GeniusFailed)> LoadTrackAsync(string query)
         {
@@ -55,7 +87,7 @@ namespace Archivist.Api.Services
                 Artist = artist,
                 AlbumArt = item["album"]?["cover_xl"]?.GetValue<string>() ?? "",
                 Year = ParseYear(item["release_date"]?.GetValue<string>()),
-                Bpm = (int)Math.Round(item["bpm"]?.GetValue<double>() ?? 0), // 0 = unknown, the UI hides it
+                Bpm = (int)Math.Round(item["bpm"]?.GetValue<double>() ?? 0), // 0 = unknown
                 Credits = new Credits { LeadProducer = "", CoProducers = new(), Writers = new(), MixingEngineer = "" },
                 Samples = new()
             };

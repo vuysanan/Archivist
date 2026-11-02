@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { Search, Disc3, Mic2, ArrowLeft } from 'lucide-react';
+import { Search, Disc3, ArrowLeft } from 'lucide-react';
 import ErrorState from './ErrorState';
 import AlbumView from './AlbumView';
+import SampleTree from './SampleTree';
+import SuggestModal from './SuggestModal';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'https://localhost:7266';
 const EXAMPLES = [
@@ -41,6 +43,45 @@ export default function App() {
   const requestRef = useRef(null);
   const [navIndex, setNavIndex] = useState(0); // how many pages deep we are in this visit
 
+  // ---- 30-second previews on the Sample Tree ----
+  const [preview, setPreview] = useState({ id: null, status: 'idle' }); // idle | loading | playing | none
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const audioRef = useRef(null);
+  const previewToken = useRef(0); // lets us ignore a preview that finished loading after you moved on
+
+  const stopPreview = () => {
+    previewToken.current++;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setPreview({ id: null, status: 'idle' });
+  };
+
+  const togglePreview = async (sample) => {
+    if (preview.id === sample.id && preview.status === 'playing') {
+      stopPreview();
+      return;
+    }
+    stopPreview();
+    const token = previewToken.current;
+    setPreview({ id: sample.id, status: 'loading' });
+    try {
+      const res = await fetch(
+        `${API_URL}/api/archive/preview?title=${encodeURIComponent(sample.title)}&artist=${encodeURIComponent(sample.artist)}`
+      );
+      if (!res.ok) throw new Error('no preview');
+      const { url } = await res.json();
+      if (token !== previewToken.current) return;
+
+      const audio = new Audio(url);
+      audio.onended = () => setPreview({ id: null, status: 'idle' });
+      audioRef.current = audio;
+      await audio.play();
+      if (token === previewToken.current) setPreview({ id: sample.id, status: 'playing' });
+    } catch {
+      if (token === previewToken.current) setPreview({ id: sample.id, status: 'none' });
+    }
+  };
+
   const load = async (term, searchMode = mode) => {
     const q = term.trim();
     if (!q) return;
@@ -48,6 +89,8 @@ export default function App() {
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
+    stopPreview();
+    setSuggestOpen(false);
     setLoading(true);
     setError(null);
 
@@ -71,6 +114,7 @@ export default function App() {
 
   const resetToHome = () => {
     requestRef.current?.abort();
+    stopPreview();
     setLoading(false);
     setData(null);
     setError(null);
@@ -228,29 +272,13 @@ export default function App() {
                       </motion.section>
 
                       <motion.section variants={fadeUp}>
-                        <Heading>Sample Tree</Heading>
-                        {samples.length === 0 ? (
-                          <p className="text-sm text-neutral-500">No samples found for this track.</p>
-                        ) : (
-                          <ul className="space-y-4">
-                            {samples.map((s) => (
-                              <li key={s.id}>
-                                <motion.button type="button" onClick={() => openTrack(`${s.artist} ${s.title}`)}
-                                  whileHover={{ scale: 1.02, x: 5 }} whileTap={{ scale: 0.98 }}
-                                  className="w-full text-left bg-surface p-4 rounded-xl border border-neutral-800 flex items-center justify-between gap-4 cursor-pointer focus-visible:outline-2 focus-visible:outline-neutral-500">
-                                  <div className="flex items-center gap-4">
-                                    <div className="bg-neutral-800 p-3 rounded-lg"><Mic2 className="w-5 h-5 text-neutral-400" /></div>
-                                    <div>
-                                      <p className="font-bold">{s.title}</p>
-                                      <p className="text-sm text-neutral-400">{s.artist}{s.year ? ` (${s.year})` : ''}</p>
-                                    </div>
-                                  </div>
-                                  <span className="text-xs font-mono text-neutral-500 bg-neutral-900 px-3 py-1 rounded-full shrink-0">{s.type}</span>
-                                </motion.button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                        <SampleTree
+                          samples={samples}
+                          preview={preview}
+                          onTogglePreview={togglePreview}
+                          onOpen={(s) => openTrack(`${s.artist} ${s.title}`)}
+                          onSuggest={() => setSuggestOpen(true)}
+                        />
                       </motion.section>
                     </div>
                   </>
@@ -271,6 +299,10 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
+
+        {suggestOpen && data && !data.tracks && (
+          <SuggestModal track={data} apiUrl={API_URL} onClose={() => setSuggestOpen(false)} />
+        )}
 
         <footer className="mt-auto pt-24 text-sm text-neutral-600">
           Site by{' '}
