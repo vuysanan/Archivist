@@ -6,8 +6,7 @@ A motion-driven metadata archive for music. Search a track or an album and insta
 
 **Live demo:** https://music-archivist.vercel.app/
 
-<!-- Add a screenshot: save it as docs/screenshot.png and uncomment the line below -->
-<!-- ![Archivist screenshot](docs/screenshot.png) -->
+![Archivist screenshot](docs/no-role-modelz.png)
 
 ## Features
 
