@@ -22,4 +22,11 @@ public class TextUtilTests
     {
         Assert.Equal(expected, TextUtil.StripBrackets(input));
     }
+
+    [Fact]
+    public void Key_ignores_capitals_punctuation_and_remaster_notes()
+    {
+        Assert.Equal("the notorious big|juicy", TextUtil.Key("The Notorious B.I.G.", "Juicy (2005 Remaster)"));
+        Assert.Equal(TextUtil.Key("Rick James", "Mary Jane"), TextUtil.Key("rick james", "Mary Jane (Live 1982)"));
+    }
 }

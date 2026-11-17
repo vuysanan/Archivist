@@ -6,15 +6,18 @@ A motion-driven metadata archive for music. Search a track or an album and insta
 
 **Live demo:** https://music-archivist.vercel.app/
 
-![Archivist screenshot](docs/no-role-modelz.png)
+<!-- Add a screenshot: save it as docs/screenshot.png and uncomment the line below -->
+<!-- ![Archivist screenshot](docs/screenshot.png) -->
 
 ## Features
 
 - **Track search:** credits, release year and cover art.
-- **Album search:** cover, year and a numbered tracklist. Click a track to open its credits.
-- **Sample Tree:** click any sample to search for the original song and follow the chain back.
-- **Friendly error screens** (not found, server problem, offline, too many requests).
-- Dark, minimal interface with spring-based staggered entrance animations.
+- **Album search:** cover, year and a numbered tracklist. Selecting a track opens its credits.
+- **Sample Tree:** select any sample to search for the original song and follow the chain back.
+- **30-second previews:** play any sample straight from the Sample Tree.
+- **Community suggestions:** visitors can suggest a missing sample. Every suggestion is reviewed before it appears, and approved ones carry a "Community verified" badge.
+- **Friendly error screens** for not found, server problems, offline and too many requests.
+- A dark, minimal interface with spring-based staggered entrance animations and animated screen transitions.
 
 ## Tech stack
 
@@ -22,85 +25,62 @@ A motion-driven metadata archive for music. Search a track or an album and insta
 | --- | --- |
 | Frontend | React, Vite, Tailwind CSS, Framer Motion, lucide-react |
 | Backend | ASP.NET Core 8 Web API (C#) |
-| Data | [Deezer API](https://developers.deezer.com/api) (basics, no key needed) and [Genius API](https://docs.genius.com/) (credits and samples) |
-| Hosting | Vercel (frontend), Render in a Docker container (backend) |
+| Database | PostgreSQL (Neon) with Entity Framework Core, for community suggestions |
+| Data sources | [Deezer API](https://developers.deezer.com/api) (basics, previews) and [Genius API](https://docs.genius.com/) (credits and samples) |
+| Testing and CI | xUnit, GitHub Actions |
+| Hosting | Vercel (frontend), Render in a Docker container (backend), Neon (database) |
 
 ## How it works
 
 ```
 Browser (React on Vercel)
-        |  GET /api/archive/search?q=...   or   /api/archive/album?q=...
+        |  search, album, preview and suggestion requests
         v
 ASP.NET Core API (Render)
-        |-- Deezer: title, artist, cover art, year, BPM, tracklist
+        |-- Deezer: title, artist, cover art, year, tracklist, previews
         |-- Genius: producers, writers, mixing engineer, samples
-        '-- In-memory cache (12 h) and per-visitor rate limit (30 requests/min)
+        |-- PostgreSQL (Neon): community sample suggestions
+        |-- Discord webhook: owner notification for new suggestions
+        '-- In-memory cache (12 h) and per-visitor rate limiting
 ```
 
-Genius results are only used when both the title and the artist match, so a wrong song's credits are never shown. If no match is found, the credits show "Not listed".
+**Matching.** Deezer and Genius share no common ID, so the backend matches them by comparing cleaned-up song titles and artist names. Genius results are only used when both the title and the artist match, so credits for a different song are never shown. If no match is found, the credits show "Not listed". Deezer results are ranked so that the original release is preferred over karaoke, tribute and re-upload versions.
 
-## Run it locally
+**Resilience.** If Genius is unavailable, the page still shows the Deezer details. Search results are cached for 12 hours, and each visitor is rate limited to protect the usage limits of the public APIs.
 
-You need the [.NET 8 SDK](https://dotnet.microsoft.com/download) and [Node.js](https://nodejs.org/).
+## Community suggestions
 
-**1. Get a Genius token** (free): create an API client at https://genius.com/api-clients and generate a *Client Access Token*.
+Anyone can suggest a missing sample from a track page, with no account needed. Suggestions are stored as **pending** and stay hidden until an admin approves them. Spam is limited by a hidden trap field, duplicate detection and a per-visitor limit on how many suggestions can be sent per hour. The review page is protected by a secret admin key. The site owner is notified of each new suggestion through a private Discord channel.
 
-**2. Backend**
+## Testing
 
-```bash
-cd backend/Archivist.Api
-dotnet user-secrets init
-dotnet user-secrets set "Genius:AccessToken" "your-token"
-dotnet run --launch-profile https
-```
+The backend has unit and integration tests (xUnit), and GitHub Actions runs them, plus a frontend build, on every push.
 
-**3. Frontend**
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173. If your API runs on a different port than `7266`, create `frontend/.env` containing `VITE_API_URL=https://localhost:YOUR_PORT`.
-
-## Tests
-
-```bash
-cd backend/Archivist.Api.Tests
-dotnet test
-```
-
-- **Unit tests** cover the matching logic (name cleaning, picking the right Deezer result), including the real wrong-result bugs found during testing.
-- **Integration tests** start the API in memory with fake music services and check the endpoints, 404s, rate limiting and CORS. No internet or API keys needed.
+- **Unit tests** cover the matching logic: name cleaning, choosing the right Deezer result, and merging community samples. Several replay real wrong-result bugs found during testing, so they can't quietly come back.
+- **Integration tests** start the API in memory with fake music services and check the endpoints, error responses, rate limiting, CORS, and the suggestion and review flow.
 
 ## Deployment
 
-**Backend (Render, Docker)**
-- Root directory: `backend/Archivist.Api` (it contains the `Dockerfile`).
-- Environment variables:
-  - `Genius__AccessToken` = your Genius token
-  - `PORT` = `8080`
-  - `Cors__Origins__0` = your Vercel address, e.g. `https://music-archivist.vercel.app`
-
-**Frontend (Vercel)**
-- Root directory: `frontend`.
-- Environment variable: `VITE_API_URL` = your Render address. Redeploy after changing it.
+The React frontend is deployed on Vercel. The API runs in a Docker container on Render, in an EU region so that Deezer returns its full catalogue. Community suggestions are stored in a Neon PostgreSQL database. Secrets such as the Genius token and the admin key are kept in the hosting services' environment settings and are never committed to the repository.
 
 ## Project structure
 
 ```
 Archivist/
-  backend/Archivist.Api/   ASP.NET Core API (controllers, services, models, Dockerfile)
+  backend/
+    Archivist.Api/         ASP.NET Core API (controllers, services, data, models, Dockerfile)
+    Archivist.Api.Tests/   unit and integration tests
   frontend/                React + Vite app
+  .github/workflows/       CI pipeline
 ```
 
 ## Known limitations
 
 - The free Render plan sleeps after 15 minutes without traffic, so the first search after a break can take a while.
 - Genius credits and samples are crowd-sourced, so some songs have gaps.
-- Search works best with the artist included, e.g. `Kendrick Lamar DNA`.
+- Search works best with the artist included, for example `Kendrick Lamar DNA`.
 - Deezer and Genius have their own usage limits, which is why results are cached and requests are rate limited.
+- Song previews depend on Deezer, and not every song has one.
 
 ## Credits
 

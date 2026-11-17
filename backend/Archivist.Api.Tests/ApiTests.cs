@@ -35,6 +35,9 @@ public class ApiTests
                 Samples = new()
             });
 
+        public Task<string?> GetPreviewUrlAsync(string title, string artist) =>
+            Task.FromResult<string?>(title == "nothing" ? null : "https://example.com/preview.mp3");
+
         public Task<AlbumDetails?> GetAlbumMetadataAsync(string query) =>
             Task.FromResult<AlbumDetails?>(query == "nothing" ? null : new AlbumDetails
             {
@@ -96,6 +99,31 @@ public class ApiTests
         var response = await client.GetAsync(url);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Preview_returns_a_link_when_one_exists()
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/archive/preview?title=Mary%20Jane&artist=Rick%20James");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("preview.mp3", await response.Content.ReadAsStringAsync());
+    }
+
+    [Theory]
+    [InlineData("/api/archive/preview?title=nothing", HttpStatusCode.NotFound)]
+    [InlineData("/api/archive/preview?title=", HttpStatusCode.BadRequest)]
+    public async Task Preview_handles_missing_previews_and_empty_titles(string url, HttpStatusCode expected)
+    {
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync(url);
+
+        Assert.Equal(expected, response.StatusCode);
     }
 
     [Fact]

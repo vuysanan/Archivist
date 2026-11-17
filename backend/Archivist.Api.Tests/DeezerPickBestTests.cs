@@ -71,4 +71,12 @@ public class DeezerPickBestTests
     {
         Assert.Null(DeezerClient.PickBest(new JsonArray(), "anything"));
     }
+
+    [Fact]
+    public void For_previews_a_wrong_song_is_better_than_no_match_so_strict_mode_returns_null()
+    {
+        var results = Results(Item(1, "Something Else", "Another Artist"));
+
+        Assert.Null(DeezerClient.PickBest(results, "rick james mary jane", requireMatch: true));
+    }
 }
